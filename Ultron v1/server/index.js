@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -58,27 +59,43 @@ app.get('/api/files/:name', async (req, res) => {
 
 // AI Proxy Route
 app.post('/api/ai/chat', async (req, res) => {
-    const { message, model, apiKey } = req.body;
+    const { message, model } = req.body;
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-    // Logic for failover and model selection
-    const providers = [
-        { name: 'HuggingFace', status: 'online' },
-        { name: 'Groq', status: 'online' },
-        { name: 'DeepSeek', status: 'online' }
-    ];
+    // Model mapping
+    const modelMapping = {
+        'DeepSeek-Coder-V2': 'deepseek-r1-distill-llama-70b',
+        'Mistral-7B-Free': 'mixtral-8x7b-32768',
+        'Claude-3-Haiku': 'llama3-70b-8192',
+        'Llama-3-70B': 'llama3-70b-8192'
+    };
 
-    const selectedProvider = providers[Math.floor(Math.random() * providers.length)];
+    const groqModel = modelMapping[model] || 'llama3-8b-8192';
 
-    setTimeout(() => {
-        res.json({
-            response: `[Ultron / ${model || 'Core'} / ${selectedProvider.name}] I've processed your request.
-Executing predictive analysis...
-Analysis complete.
-Recommendation: Optimize your logic for better concurrency.`,
-            provider: selectedProvider.name,
-            usage: { prompt_tokens: 124, completion_tokens: 88 }
+    try {
+        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+            model: groqModel,
+            messages: [
+                { role: 'system', content: 'You are Ultron, a highly advanced AI coding assistant.' },
+                { role: 'user', content: message }
+            ]
+        }, {
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
         });
-    }, 800);
+
+        res.json({
+            response: response.data.choices[0].message.content,
+            provider: 'Groq',
+            model: groqModel,
+            usage: response.data.usage
+        });
+    } catch (err) {
+        console.error('Groq API Error:', err.response?.data || err.message);
+        res.status(500).json({ error: 'Failed to communicate with Ultron Neural Core' });
+    }
 });
 
 // Build Routes
